@@ -555,14 +555,28 @@ a:focus-visible,button:focus-visible,.quoteForm input:focus-visible,.quoteForm s
       const d=e.target.closest('details');if(d)d.open=true;
     },true);
     const phone=form.elements.phone,pref=form.elements.contact_preference;
-    pref.addEventListener('change',()=>{phone.required=pref.value==='SMS';});
+    const phoneHint=phone.closest('label').querySelector('small');
+    const optionalPhoneHint=phoneHint.textContent;
+    const formLanguage=form.elements.language.value;
+    const requiredPhoneHint={
+      en:'Required for text message (SMS) replies.',
+      es:'Obligatorio para recibir respuestas por mensaje de texto (SMS).',
+      pt:'Obrigatório para receber respostas por mensagem de texto (SMS).'
+    };
+    function updatePhoneRequirement(){
+      phone.required=pref.value==='SMS';
+      phoneHint.textContent=phone.required?requiredPhoneHint[formLanguage]:optionalPhoneHint;
+    }
+    pref.addEventListener('change',updatePhoneRequirement);
+    updatePhoneRequirement();
+    form.addEventListener('quoteRestoreStep',event=>show(Math.max(0,Math.min(2,event.detail)),false));
     const completion=form.parentElement.querySelector('.quoteSuccess');
     const summary=document.createElement('p');summary.className='quoteSummary';completion?.append(summary);
     form.addEventListener('quoteConfirmed',()=>{
       const d=new FormData(form);
       summary.textContent=form.dataset.summaryTitle+'\n'+[d.get('service'),d.get('space_type'),d.get('cityzip'),d.get('frequency'),d.get('email')].filter(Boolean).join('\n');
     });
-    form.addEventListener('reset',()=>{phone.required=false;show(0,false);form.querySelectorAll('details').forEach(d=>d.open=false);});
+    form.addEventListener('reset',()=>{phone.required=false;phoneHint.textContent=optionalPhoneHint;show(0,false);form.querySelectorAll('details').forEach(d=>d.open=false);});
     show(0,false);
   });
 })();
@@ -587,4 +601,41 @@ a:focus-visible,button:focus-visible,.quoteForm input:focus-visible,.quoteForm s
     update();
   });
 })();
-</script></body></html>
+</script>
+<script>
+/* Preserve an in-progress quote when switching its display language. */
+(() => {
+  document.addEventListener('click', event => {
+    const link=event.target.closest('.langs a');
+    if(!link)return;
+    const source=link.closest('section').querySelector('.quoteForm');
+    const targetSection=document.querySelector(link.getAttribute('href'));
+    const target=targetSection?.querySelector('.quoteForm');
+    if(!source||!target||source===target||
+       source.elements.service.value!==target.elements.service.value||
+       source.getAttribute('aria-busy')==='true'||source.hidden)return;
+    const controls=[...source.querySelectorAll('input,select,textarea')];
+    controls.forEach(field=>{
+      if(!field.name||field.type==='hidden'||field.name.startsWith('_'))return;
+      const peers=[...source.querySelectorAll('input,select,textarea')].filter(el=>el.name===field.name);
+      const destinations=[...target.querySelectorAll('input,select,textarea')].filter(el=>el.name===field.name);
+      const destination=destinations[peers.indexOf(field)];
+      if(!destination)return;
+      if(field.type==='checkbox'||field.type==='radio')destination.checked=field.checked;
+      else if(field.tagName==='SELECT'){
+        const match=[...destination.options].find(option=>option.value===field.value);
+        if(match)destination.value=match.value;
+        else if(destination.options.length===field.options.length)destination.selectedIndex=field.selectedIndex;
+      }else destination.value=field.value;
+      destination.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    const sourceDetails=[...source.querySelectorAll('details')];
+    target.querySelectorAll('details').forEach((details,i)=>details.open=sourceDetails[i]?.open||false);
+    const step=[...source.querySelectorAll('.quoteStep')].findIndex(panel=>!panel.hidden);
+    target.dispatchEvent(new CustomEvent('quoteRestoreStep',{detail:Math.max(0,step)}));
+    const status=target.querySelector('.formStatus');
+    if(status)status.hidden=true;
+  });
+})();
+</script>
+</body></html>
